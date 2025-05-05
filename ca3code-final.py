@@ -1,7 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
-
+def save_plot_with_params(system_type, m, k, plot_name):
+    os.makedirs("plots", exist_ok=True)
+    filename = f"{system_type}_m{m}_k{k}_{plot_name}.png".replace('.', 'p')
+    filepath = os.path.join("plots", filename)
+    plt.savefig(filepath, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"📁 Saved: {filepath}")
 class QuantumOscillatorPIMC:
     """
     Path Integral Monte Carlo simulation for harmonic and anharmonic oscillators.
@@ -83,6 +90,7 @@ class QuantumOscillatorPIMC:
         acc_rate = self.accepts / (self.Nt * self.num_sweeps)
         print(f"Acceptance Rate: {acc_rate:.3f}")
         return np.array(configs)
+    
 
     def compute_single_energy(self, path):
         """
@@ -112,45 +120,43 @@ class QuantumOscillatorPIMC:
         V_mean = np.mean(V_vals)
         return T_mean + V_mean, T_mean, V_mean
 
-    def plot_probability_distribution(self, paths):
-        """
-        Plot histogram of sampled x-values approximating |ψ₀(x)|².
-        """
+    def plot_probability_distribution(self, paths, system_type, m, k):
         all_x = paths.flatten()
         plt.hist(all_x, bins=100, density=True, label='MC P(x)')
         plt.xlabel("x")
         plt.ylabel("Probability Density")
-        plt.title(f"Ground State Probability Distribution, m={m},k={k}, ({system_type})")
+        plt.title(f"Ground State Probability Distribution\nm={m}, k={k}, ({system_type})")
         plt.grid(True)
         plt.legend()
-        plt.show()
+        save_plot_with_params(system_type, m, k, "probability_distribution")
+        
 
-    def estimate_first_excited_state(self, paths):
-        """
-        Estimate energy gap E1 - E0 from autocorrelation decay C(t).
-        """
+    def estimate_first_excited_state(self, paths, system_type, m, k):
         x0s = paths[:, 0]
         correlations = []
         for t in range(1, self.Nt // 2):
             xts = paths[:, t]
             corr = np.mean(x0s * xts)
             correlations.append(corr)
-
+    
         correlations = np.array(correlations)
         times = np.arange(1, self.Nt // 2) * self.a
         log_corr = np.log(np.abs(correlations))
-
+    
         slope, intercept = np.polyfit(times, log_corr, 1)
         gap = -slope
-
+    
         plt.plot(times, log_corr, label='log C(t)')
         plt.plot(times, slope * times + intercept, '--', label=f'Slope = {-gap:.3f}')
         plt.xlabel("Imaginary Time")
         plt.ylabel("log C(t)")
-        plt.title(f"Autocorrelation Decay, m={m},k={k}, ({system_type})")
+        plt.title(f"Autocorrelation Decay\nm={m}, k={k}, ({system_type})")
         plt.legend()
         plt.grid(True)
-        plt.show()
+        save_plot_with_params(system_type, m, k, "autocorrelation_decay")
+    
+        return gap
+
 
         return gap
 
@@ -165,24 +171,22 @@ class QuantumOscillatorPIMC:
         ])
         return binned
 
-    def standard_error_vs_bin_size(self):
-        """
-        Estimate standard error for various bin sizes and plot.
-        """
+    def standard_error_vs_bin_size(self, system_type, m, k):
         bin_sizes = np.arange(1, 20)
         SEs = []
         for b in bin_sizes:
             binned = self.bin_data(self.collected_energies, b)
             SEs.append(np.std(binned) / np.sqrt(len(binned)))
-
+    
         plt.plot(bin_sizes, SEs, 'o-')
         plt.xlabel("Bin Size")
         plt.ylabel("Standard Error")
-        plt.title("Standard Error vs Bin Size")
+        plt.title(f"Standard Error vs Bin Size\nm={m}, k={k}, ({system_type})")
         plt.grid(True)
-        plt.show()
-
+        save_plot_with_params(system_type, m, k, "standard_error_vs_bin_size")
+    
         return SEs
+
 
     def reweight_energy(self, beta_current, beta_target):
         """
@@ -212,6 +216,8 @@ class QuantumOscillatorPIMC:
                     'gap': gap
                 })
         return results
+    
+    
 
 
 
@@ -274,14 +280,16 @@ for system_type in system_types:
         
             paths = sim.run(burn_in=burn_in)
             E0, T, V = sim.compute_energies(paths)
-            gap = sim.estimate_first_excited_state(paths)
+            gap = sim.estimate_first_excited_state(paths, system_type, m, k)
             E1 = E0 + gap
-
-
+            
             print("\n📊 Results (converted to eV):")
             print(f"Ground State Energy E₀ = {E0:.6e} eV")
             print(f"First Excited State Energy E₁ = {E1:.6e} eV")
             print(f"Energy Gap ΔE = {gap:.6e} eV")
-
+            
             print("Plotting |ψ₀(x)|² ...")
-            sim.plot_probability_distribution(paths)
+            sim.plot_probability_distribution(paths, system_type, m, k)
+            
+            print("Plotting standard error vs. bin size ...")
+            sim.standard_error_vs_bin_size(system_type, m, k)
